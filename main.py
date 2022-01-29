@@ -1,7 +1,9 @@
 import base64
+from cgitb import text
 import datetime
 import hashlib
 import os
+from pstats import Stats
 import subprocess
 import rsa
 from threading import Timer
@@ -17,36 +19,20 @@ Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
 class GUICKO(QMainWindow, Ui_MainWindow): 
 
-    def msgBox(self, text):
+    def vysOkno(self, text):
         msg = QMessageBox()
         msg.setText(text)
         msg.exec_()
-
-    def browsePublicKey(self):
-        self.publicKey, _ = QFileDialog.getOpenFileName(
-            self, 'Vyber verejný klúč', '','(*.pub)'
-        )
-        if not self.fileName: return
-
-        self.public_key_path.setText(f'{self.publicKey}')
-
-    def browsePrivateKey(self):
-        self.privateKey, _ = QFileDialog.getOpenFileName(
-            self, 'Vyber privatny kluč', '','(*.priv)'
-        )
-        if not self.privateKey: return
-
-        self.private_key_path.setText(f'{self.privateKey}')
 
     def generateKeys(self, savePath):
 
         savePath = QFileDialog.getExistingDirectory(self, 'vyber složky pre uloženie súboru',)
         if not savePath: return
 
-        keys = rsa.generateKey()
-        klucE = str(keys['e'])
-        klucN = str(keys['n'])
-        klucD = str(keys['d'])
+        kluce = rsa.generateKey()
+        klucE = str(kluce['e'])
+        klucN = str(kluce['n'])
+        klucD = str(kluce['d'])
 
         privKluc = klucE + ' ' + klucN
         base64klucP = base64.b64encode(privKluc.encode('ascii'))
@@ -64,64 +50,117 @@ class GUICKO(QMainWindow, Ui_MainWindow):
         with open(verejnyKlucMeno, "w") as file:
             file.write('RSA ' + b64klucV)
 
-        self.msgBox('Keys generated!')
+        self.vysOkno('Kluce vygenerovane ')
 
-        return keys
+        return kluce
 
     def sign(self):
 
-        self.fileName, _ = QFileDialog.getOpenFileName(
+        self.nazov, _ = QFileDialog.getOpenFileName(
             self, 'Vyber subor', '','(*)'
         )
-        if not self.fileName: return
+        if not self.nazov: return
 
-        self.file_path.setText(f'{self.fileName}')
-        self.file_name.setText(f'Name:{os.path.basename(self.fileName)}')
-        self.file_type.setText(f'Type:{os.path.splitext(self.fileName)[1]}')
-        self.file_size.setText(f'Size:{os.path.getsize(self.fileName)}')
-        self.file_created.setText(f'Created:{os.path.getctime(self.fileName)}')
-        self.file_lastm.setText(f'Last modified:{os.path.getmtime(self.fileName)}')
-        if not self.fileName : return
+        info = os.stat(self.nazov)
+        time = datetime.datetime.fromtimestamp(info.st_ctime).strftime('%d/%m/%Y %H:%M')
+        posUpravaTime = datetime.datetime.fromtimestamp(info.st_mtime).strftime('%d/%m/%Y %H:%M')
+        
+        self.cesta_suboru.setText(f'{self.nazov}')
+        self.nazov_suboru.setText(f'Názov:{os.path.basename(self.nazov)}')
+        self.typ_suboru.setText(f'Typ:{os.path.splitext(self.nazov)[1]}')
+        self.sub_velkost.setText(f'Velkosť:{os.path.getsize(self.nazov)}')
+        self.vytvorenie.setText(f'Vytvorenie:{time}')
+        self.suborPosledna.setText(f'Posledna uprava:{posUpravaTime}')
+        if not self.nazov : return
 
-        dirPath = QFileDialog.getExistingDirectory(self, 'Select Directory To Save Files',)
-        if not dirPath: return
+        saveP = QFileDialog.getExistingDirectory(self, 'Vyber priecinok pre ulozenie',)
+        if not saveP: return
 
-        nameOfFile = os.path.basename(self.fileName)
-        zipFileName = dirPath + f'/{nameOfFile}.zip'
+        self.privatnyKluc, _ = QFileDialog.getOpenFileName(
+            self, 'Vyber privatny kluč', '','(*.priv)'
+        )
+        if not self.privatnyKluc: return
 
-        with open(self.privateKey, 'rb') as file:
+        self.private_key_path.setText(f'{self.privatnyKluc}')
+
+        with open(self.privatnyKluc, 'rb') as file:
                 fileContent = file.read().split()[1]
-        keysArray = self.undoBase64(fileContent).split()
+        text_b = base64.b64decode(fileContent)
+        text_b = text_b.decode('ascii')
+        keysArray = text_b.split()
         keys = {'e': int(keysArray[0]), 'n': int(keysArray[1])}
 
-        with open(self.fileName, 'rb') as file:
-            hashText = hashlib.sha3_512(file.read()).hexdigest()
-        encodedText = rsa.sifruj(keys['e'], keys['n'], hashText)
-        base64_text = self.dobase64(encodedText)
+        with open(self.nazov, 'rb') as file:
+            x = file.read()
+            hashText = hashlib.sha3_512(x).hexdigest()
+        sifText = rsa.sifruj(keys['e'], keys['n'], hashText)
+        bas64Text = base64.b64encode(sifText.encode('ascii'))
+        bas64Text = bas64Text.decode('ascii')
+
+        nazovZipFile = os.path.basename(self.nazov)
+        zipFileName = saveP + f'/{nazovZipFile}.zip'
 
         with ZipFile(zipFileName, 'w') as zipObj:
-            with open(self.fileName, 'rb') as file:
-                zipObj.writestr(os.path.basename(self.fileName), file.read())
-            zipObj.writestr(nameOfFile + '.sign', 'RSA_SHA3-512 ' + base64_text)
+            with open(self.nazov, 'rb') as file:
+                naz = os.path.basename(self.nazov)
+                zipObj.writestr(naz, file.read())
+            zipObj.writestr(nazovZipFile + '.sign', 'RSA_SHA3-512 ' + bas64Text)
 
-        self.msgBox('Electronic signature generated!')
+        self.vysOkno('Electronic podpis vytvoreny')
+
+    def check_sign(self):
+
+        self.verejnyKluc, _ = QFileDialog.getOpenFileName(
+            self, 'Vyber verejný klúč', '','(*.pub)'
+        )
+        if not self.verejnyKluc: return
+
+        self.public_key_path.setText(f'{self.verejnyKluc}')
+
+        nazovZipFile, _ = QFileDialog.getOpenFileName(self, 'Vyber subor s priponou .zip', '', '(*.zip)')
+        if not nazovZipFile: return
+
+        with ZipFile(nazovZipFile, 'r') as zipObj:
+
+            if len(zipObj.namelist()) != 2:
+                self.vysOkno( 'Nesprávny format zipFile', True)
+                return
+
+            for obj in zipObj.namelist():
+
+                if obj.endswith('.sign'): podFile = obj
+
+                if not obj.endswith('.sign'): fileOnl = obj
+
+            if not podFile or not fileOnl:
+                self.vysOkno('Nesprávny format zipFile', True)
+                return
+            textik = base64.b64decode(zipObj.read(podFile).split()[1])
+            textik = textik.decode('ascii')
+            signContent = textik
 
 
-    def dobase64(self, text):
-        base64_b = base64.b64encode(text.encode('ascii'))
-        return base64_b.decode('ascii')
+            sif = hashlib.sha3_512(zipObj.read(fileOnl)).hexdigest()
 
-    def undoBase64(self, text):
-        text_b = base64.b64decode(text)
-        return text_b.decode('ascii')
+        with open(self.verejnyKluc, 'rb') as obj:
+            fileContent = obj.read().split()[1]
+        kluceH = base64.b64decode(fileContent)
+        kluceH = kluceH.decode('ascii')
+        keys = kluceH.split()
+    
+        desif = rsa.desifruj(int(keys[0]), int(keys[1]), signContent)
+
+        if desif == sif:
+            self.vysOkno('Podpis sa zhoduje!')
+        else:
+            self.vysOkno('Podpis sa nezhoduje')
 
     def __init__(self):
         QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         self.setupUi(self)
-        self.pushButton_browsePubKey.clicked.connect(self.browsePublicKey)
-        self.pushButton_browsePrivKey.clicked.connect(self.browsePrivateKey)
         self.pushButton_sign.clicked.connect(self.sign)
+        self.pushButton_check_sign.clicked.connect(self.check_sign)
         self.pushButton_genKeys.clicked.connect(self.generateKeys)
 
      
