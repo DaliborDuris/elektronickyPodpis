@@ -17,18 +17,59 @@ Ui_MainWindow, QtBaseClass = uic.loadUiType(qtCreatorFile)
 
 class GUICKO(QMainWindow, Ui_MainWindow): 
 
-    fileName = ''
-    publicKey = None
-    privateKey = None
-    FILEBROWSER_PATH = os.path.join(os.getenv('WINDIR'), 'explorer.exe')
-
-    def msgBox(self, title, text):
+    def msgBox(self, text):
         msg = QMessageBox()
-        msg.setWindowTitle(title)
         msg.setText(text)
         msg.exec_()
 
-    def browseFile(self):
+    def browsePublicKey(self):
+        self.publicKey, _ = QFileDialog.getOpenFileName(
+            self, 'Vyber verejný klúč', '','(*.pub)'
+        )
+        if not self.fileName: return
+
+        self.public_key_path.setText(f'{self.publicKey}')
+
+    def browsePrivateKey(self):
+        self.privateKey, _ = QFileDialog.getOpenFileName(
+            self, 'Vyber privatny kluč', '','(*.priv)'
+        )
+        if not self.privateKey: return
+
+        self.private_key_path.setText(f'{self.privateKey}')
+
+    def generateKeys(self, savePath):
+
+        savePath = QFileDialog.getExistingDirectory(self, 'vyber složky pre uloženie súboru',)
+        if not savePath: return
+
+        keys = rsa.generateKey()
+        klucE = str(keys['e'])
+        klucN = str(keys['n'])
+        klucD = str(keys['d'])
+
+        privKluc = klucE + ' ' + klucN
+        base64klucP = base64.b64encode(privKluc.encode('ascii'))
+        b64klucP = str(base64klucP.decode('ascii'))
+
+        verKluc = klucD + ' ' + klucN
+        base64klucV = base64.b64encode(verKluc.encode('ascii'))
+        b64klucV = str(base64klucV.decode('ascii'))
+
+        privatnyKlucMeno = savePath + f'/privateKey.priv'
+        with open(privatnyKlucMeno, 'w') as file:
+            file.write('RSA ' + b64klucP)
+        
+        verejnyKlucMeno = savePath + f'/publicKey.pub'
+        with open(verejnyKlucMeno, "w") as file:
+            file.write('RSA ' + b64klucV)
+
+        self.msgBox('Keys generated!')
+
+        return keys
+
+    def sign(self):
+
         self.fileName, _ = QFileDialog.getOpenFileName(
             self, 'Vyber subor', '','(*)'
         )
@@ -40,50 +81,12 @@ class GUICKO(QMainWindow, Ui_MainWindow):
         self.file_size.setText(f'Size:{os.path.getsize(self.fileName)}')
         self.file_created.setText(f'Created:{os.path.getctime(self.fileName)}')
         self.file_lastm.setText(f'Last modified:{os.path.getmtime(self.fileName)}')
-
-    def browsePublicKey(self):
-        self.publicKey, _ = QFileDialog.getOpenFileName(
-            self, 'Vyber verejný klúč', '','(*.pub)'
-        )
-        if not self.fileName: return
-        self.public_key_path.setText(f'{self.publicKey}')
-
-    def browsePrivateKey(self):
-        self.privateKey, _ = QFileDialog.getOpenFileName(
-            self, 'Select Private Key', '','(*.priv)'
-        )
-        if not self.fileName: return
-        self.private_key_path.setText(f'{self.privateKey}')
-
-    def generateKeys(self, dirPath, showMsgBox=True):
-
-        dirPath = QFileDialog.getExistingDirectory(self, 'vyber složky pre uloženie súboru',)
-        if not dirPath: return
-
-        privFileName = dirPath + f'/privateKey.priv'
-        pubFileName = dirPath + f'/publicKey.pub'
-
-        keys = rsa.generateKey()
-        base64_privKey = self.dobase64(str(keys['e']) + ' ' + str(keys['n']))
-        base64_pubKey = self.dobase64(str(keys['d']) + ' ' + str(keys['n']))
-
-        with open(privFileName, 'w') as file:
-            file.write('RSA ' + base64_privKey)
-        with open(pubFileName, "w") as file:
-            file.write('RSA ' + base64_pubKey)
-
-        if showMsgBox:
-            self.msgBox('Success!!!', 'Keys generated!')
-
-        return keys
-
-    def sign(self):
         if not self.fileName : return
-        nameOfFile = os.path.basename(self.fileName)
 
         dirPath = QFileDialog.getExistingDirectory(self, 'Select Directory To Save Files',)
         if not dirPath: return
 
+        nameOfFile = os.path.basename(self.fileName)
         zipFileName = dirPath + f'/{nameOfFile}.zip'
 
         with open(self.privateKey, 'rb') as file:
@@ -101,7 +104,7 @@ class GUICKO(QMainWindow, Ui_MainWindow):
                 zipObj.writestr(os.path.basename(self.fileName), file.read())
             zipObj.writestr(nameOfFile + '.sign', 'RSA_SHA3-512 ' + base64_text)
 
-        self.msgBox('Success!!!', 'Electronic signature generated!')
+        self.msgBox('Electronic signature generated!')
 
 
     def dobase64(self, text):
@@ -116,7 +119,6 @@ class GUICKO(QMainWindow, Ui_MainWindow):
         QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         self.setupUi(self)
-        self.pushButton_browseFile.clicked.connect(self.browseFile)
         self.pushButton_browsePubKey.clicked.connect(self.browsePublicKey)
         self.pushButton_browsePrivKey.clicked.connect(self.browsePrivateKey)
         self.pushButton_sign.clicked.connect(self.sign)
