@@ -1,15 +1,9 @@
 import base64
-from cgitb import text
 import datetime
 import hashlib
 import os
-from pstats import Stats
-import subprocess
 import rsa
-from threading import Timer
-from tkinter import filedialog
 from zipfile import ZipFile
-from sympy.utilities.decorator import public
 import sys
 from PyQt5 import uic
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox
@@ -24,7 +18,7 @@ class GUICKO(QMainWindow, Ui_MainWindow):
         msg.setText(text)
         msg.exec_()
 
-    def generateKeys(self, savePath):
+    def tvorbaKluc(self, savePath):
 
         savePath = QFileDialog.getExistingDirectory(self, 'vyber složky pre uloženie súboru',)
         if not savePath: return
@@ -54,7 +48,7 @@ class GUICKO(QMainWindow, Ui_MainWindow):
 
         return kluce
 
-    def sign(self):
+    def podpis(self):
 
         self.nazov, _ = QFileDialog.getOpenFileName(
             self, 'Vyber subor', '','(*)'
@@ -108,7 +102,7 @@ class GUICKO(QMainWindow, Ui_MainWindow):
 
         self.vysOkno('Electronic podpis vytvoreny')
 
-    def check_sign(self):
+    def overenie(self):
 
         self.verejnyKluc, _ = QFileDialog.getOpenFileName(
             self, 'Vyber verejný klúč', '','(*.pub)'
@@ -159,9 +153,9 @@ class GUICKO(QMainWindow, Ui_MainWindow):
         QMainWindow.__init__(self)
         Ui_MainWindow.__init__(self)
         self.setupUi(self)
-        self.pushButton_sign.clicked.connect(self.sign)
-        self.pushButton_check_sign.clicked.connect(self.check_sign)
-        self.pushButton_genKeys.clicked.connect(self.generateKeys)
+        self.signBut.clicked.connect(self.podpis)
+        self.checkBut.clicked.connect(self.overenie)
+        self.generate.clicked.connect(self.tvorbaKluc)
 
      
 if __name__ == "__main__":
